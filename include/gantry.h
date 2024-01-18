@@ -72,6 +72,9 @@ class Gantry
   float speed_multiplier_q0 = 1.0;
   float speed_multiplier_q1 = 1.0;
 
+  float q0_sign = 0.0;
+  float q1_sign = 0.0;
+
   ESPWifiConfig::Configurable<float> config_target_speed;
   ESPWifiConfig::Configurable<float> config_speed_multiplier_q0;
   ESPWifiConfig::Configurable<float> config_speed_multiplier_q1;
@@ -111,6 +114,8 @@ class Gantry
   void on_speed_multiplier_q0_change();
   void on_speed_multiplier_q1_change();
 
+  void on_target_waypoint_index_change();
+
   void enable_trajectory_record();
   void enable_trajectory_track();
 
@@ -128,6 +133,11 @@ class Gantry
              MotorGo::PIDParameters position_pid_params_ch1,
              MotorGo::PIDParameters velocity_pid_params_ch0,
              MotorGo::PIDParameters velocity_pid_params_ch1);
+
+  void update_pid_params(MotorGo::PIDParameters position_pid_params_ch0,
+                         MotorGo::PIDParameters position_pid_params_ch1,
+                         MotorGo::PIDParameters velocity_pid_params_ch0,
+                         MotorGo::PIDParameters velocity_pid_params_ch1);
   void zero();
   void loop();
 };

@@ -5,6 +5,19 @@
 namespace Gantry
 {
 
+// Print message at a given frequency, provided in Hz
+void freq_print(float freq, const char* message)
+{
+  static unsigned long last_print_time = 0;
+  unsigned long now = millis();
+
+  if (now - last_print_time > 1000.0 / freq)
+  {
+    Serial.print(message);
+    last_print_time = now;
+  }
+}
+
 // Constructor implementation
 Gantry::Gantry(String robot_name)
     : name(robot_name),
@@ -44,6 +57,9 @@ Gantry::Gantry(String robot_name)
       [this](float multiplier) { on_speed_multiplier_q0_change(); });
   config_speed_multiplier_q1.set_post_callback(
       [this](float multiplier) { on_speed_multiplier_q1_change(); });
+
+  //   config_target_waypoint_index.set_post_callback(
+  //       [this](int index) { on_target_waypoint_index_change(); });
 }
 
 // Define other class member functions
@@ -81,20 +97,20 @@ void Gantry::setup(MotorGo::MotorParameters motor_params_ch0,
   zero();
 
   //   Using preferences, try to load the trajectory
-  Preferences preferences;
-  preferences.begin("gantry", false);
-  //   Try to load trajectory
-  if (preferences.isKey("traj"))
-  {
-    Serial.println("Trajectory found");
-    preferences.getBytes("traj", &trajectory.raw, TRAJECTORY_DATA_LEN);
-  }
-  else
-  {
-    Serial.println("Trajectory not found");
-  }
+  //   Preferences preferences;
+  //   preferences.begin("gantry", false);
+  //   //   Try to load trajectory
+  //   if (preferences.isKey("traj"))
+  //   {
+  //     Serial.println("Trajectory found");
+  //     preferences.getBytes("traj", &trajectory.raw, TRAJECTORY_DATA_LEN);
+  //   }
+  //   else
+  //   {
+  //     Serial.println("Trajectory not found");
+  //   }
 
-  preferences.end();
+  //   preferences.end();
 
   // Trajectory is empty
   if (trajectory.length == 0)
@@ -104,6 +120,29 @@ void Gantry::setup(MotorGo::MotorParameters motor_params_ch0,
     trajectory.length = 1;
     trajectory.waypoints[0] = {0.0, 0.0};
   }
+}
+
+void Gantry::update_pid_params(MotorGo::PIDParameters position_pid_params_ch0,
+                               MotorGo::PIDParameters position_pid_params_ch1,
+                               MotorGo::PIDParameters velocity_pid_params_ch0,
+                               MotorGo::PIDParameters velocity_pid_params_ch1)
+{
+  this->position_pid_params_ch0 = position_pid_params_ch0;
+  this->position_pid_params_ch1 = position_pid_params_ch1;
+  this->velocity_pid_params_ch0 = velocity_pid_params_ch0;
+  this->velocity_pid_params_ch1 = velocity_pid_params_ch1;
+
+  //   Set controller parameters
+  motorgo_mini.disable_ch0();
+  motorgo_mini.disable_ch1();
+
+  motorgo_mini.set_velocity_controller_ch0(this->velocity_pid_params_ch0);
+  motorgo_mini.set_position_controller_ch0(this->position_pid_params_ch0);
+  motorgo_mini.set_velocity_controller_ch1(this->velocity_pid_params_ch1);
+  motorgo_mini.set_position_controller_ch1(this->position_pid_params_ch1);
+
+  motorgo_mini.enable_ch0();
+  motorgo_mini.enable_ch1();
 }
 
 void Gantry::zero()
@@ -134,6 +173,14 @@ void Gantry::loop()
     position_t target_waypoint = trajectory.waypoints[target_waypoint_index];
     motorgo_mini.set_target_position_ch0(target_waypoint.q0);
     motorgo_mini.set_target_position_ch1(target_waypoint.q1);
+
+    // Print encoder valules
+    // char str_buffer[100];
+    // sprintf(str_buffer, "Ch0: %f, Ch1: %f\n",
+    // motorgo_mini.get_ch0_velocity(),
+    //         motorgo_mini.get_ch1_velocity());
+
+    // freq_print(5, str_buffer);
   }
   else if (mode == Mode::TRAJECTORY_RECORD)
   {
@@ -163,6 +210,7 @@ void Gantry::on_mode_change(int mode)
 
     enable_trajectory_track();
     this->mode = Mode::TRAJECTORY_TRACK;
+    // on_target_waypoint_index_change();
   }
 }
 
@@ -173,7 +221,7 @@ void Gantry::on_speed_multiplier_q0_change()
   position_pid_params_ch0.limit = target_speed * speed_multiplier_q0;
 
   Serial.print("Velocity limit q0: ");
-  Serial.println(position_pid_params_ch0.limit);
+  Serial.println(position_pid_params_ch0.limit, 10);
   motorgo_mini.set_position_controller_ch0(position_pid_params_ch0);
 }
 
@@ -183,7 +231,7 @@ void Gantry::on_speed_multiplier_q1_change()
   Serial.println(speed_multiplier_q1);
   position_pid_params_ch1.limit = target_speed * speed_multiplier_q1;
   Serial.print("Velocity limit q1: ");
-  Serial.println(position_pid_params_ch1.limit);
+  Serial.println(position_pid_params_ch1.limit, 10);
   motorgo_mini.set_position_controller_ch1(position_pid_params_ch1);
 }
 
@@ -194,6 +242,39 @@ void Gantry::on_target_speed_change()
   on_speed_multiplier_q0_change();
   on_speed_multiplier_q1_change();
 }
+
+// void Gantry::on_target_waypoint_index_change()
+// {
+//   Serial.print("Handling new target waypoint index: ");
+//   Serial.println(target_waypoint_index);
+//   Serial.println("---------------------------------------");
+
+//   //   Compute delta per timestep to achieve desired velocity
+//   //   First, determine direction of rotation by comparing current position
+//   //   to
+//   // target waypoint
+
+//   //   Get current position
+//   position_t current_position = {motorgo_mini.get_ch0_position(),
+//                                  motorgo_mini.get_ch1_position()};
+//   //   Get target waypoint
+//   position_t target_waypoint = trajectory.waypoints[target_waypoint_index];
+
+//   //   //   Compute sign
+//   q0_sign = (target_waypoint.q0 - current_position.q0) > 0 ? 1.0 : -1.0;
+//   q1_sign = (target_waypoint.q1 - current_position.q1) > 0 ? 1.0 : -1.0;
+
+//   //   //   Compute delta based on loop speed (60 hz) and position controller
+//   //   limit delta_q0 = q0_sign * position_pid_params_ch0.limit / 60.0;
+//   delta_q1
+//   //   = q1_sign * position_pid_params_ch1.limit / 60.0;
+
+//   //   //   Print delta with high precision
+//   //   Serial.print("Delta q0: ");
+//   //   Serial.println(delta_q0, 10);
+//   //   Serial.print("Delta q1: ");
+//   //   Serial.println(delta_q1, 10);
+// }
 
 position_t Gantry::get_waypoint_by_offset(int offset)
 {
@@ -246,6 +327,7 @@ void Gantry::enable_trajectory_record()
 
   //   Reset temp trajectory
   temp_trajectory.length = 0;
+  //   temp_trajectory.waypoints[0] = {0.0, 0.0};
 }
 
 void Gantry::enable_trajectory_track()
@@ -255,7 +337,18 @@ void Gantry::enable_trajectory_track()
   motorgo_mini.enable_ch1();
 
   // Set the target waypoint to the first waypoint
-  target_waypoint_index = 0;
+  //   target_waypoint_index = 1;
+
+  //   Print the trajectory
+  for (int i = 0; i < trajectory.length; i++)
+  {
+    Serial.print(trajectory.waypoints[i].q0);
+    Serial.print(", ");
+    Serial.println(trajectory.waypoints[i].q1);
+  }
+  //   Print length
+  Serial.print("Trajectory length: ");
+  Serial.println(trajectory.length);
 }
 
 bool Gantry::add_waypoint_callback()
@@ -275,7 +368,7 @@ bool Gantry::add_waypoint_callback()
   //   Add the current position to the trajectory
   position_t current_position = {motorgo_mini.get_ch0_position(),
                                  motorgo_mini.get_ch1_position()};
-  temp_trajectory.waypoints[trajectory.length] = current_position;
+  temp_trajectory.waypoints[temp_trajectory.length] = current_position;
   temp_trajectory.length++;
 
   Serial.print("Added waypoint to trajectory: ");
@@ -293,17 +386,42 @@ bool Gantry::save_trajectory_callback()
     return false;
   }
 
+  //   Serial.println("Temp");
+  //   for (int i = 0; i < temp_trajectory.length; i++)
+  //   {
+  //     Serial.print(temp_trajectory.waypoints[i].q0);
+  //     Serial.print(", ");
+  //     Serial.println(temp_trajectory.waypoints[i].q1);
+  //   }
+
   //   Copy the temp trajectory to the trajectory
   trajectory = temp_trajectory;
 
-  //   Use preferences to write
-  Preferences preferences;
-  preferences.begin("gantry", true);
-  preferences.putBytes("traj", &trajectory.raw, TRAJECTORY_DATA_LEN);
-  preferences.end();
+  //   Serial.print("Same");
+  //   //   Print the trajectory
+  //   for (int i = 0; i < trajectory.length; i++)
+  //   {
+  //     Serial.print(trajectory.waypoints[i].q0);
+  //     Serial.print(", ");
+  //     Serial.println(trajectory.waypoints[i].q1);
+  //   }
 
-  Serial.print("Saved trajectory of length ");
-  Serial.println(trajectory.length);
+  //   Use preferences to write
+  //   Preferences preferences;
+  //   preferences.begin("gantry", true);
+  //   preferences.putBytes("traj", &trajectory.raw, TRAJECTORY_DATA_LEN);
+  //   preferences.end();
+
+  //   Serial.print("Saved trajectory of length ");
+  //   Serial.println(trajectory.length);
+
+  //   Print the trajectory
+  //   for (int i = 0; i < trajectory.length; i++)
+  //   {
+  //     Serial.print(trajectory.waypoints[i].q0);
+  //     Serial.print(", ");
+  //     Serial.println(trajectory.waypoints[i].q1);
+  //   }
 
   return true;
 }
