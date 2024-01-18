@@ -1,13 +1,13 @@
 #include <Arduino.h>
 #include <ESPmDNS.h>
+#include <esp_task_wdt.h>
 
 #include "configurable.h"
 #include "gantry.h"
 #include "motorgo_mini.h"
 #include "web_server.h"
 
-#define LOOP_HZ 60
-#define LOOP_US 1000000 / LOOP_HZ
+TaskHandle_t loop_motorgo_task;
 
 Gantry::Gantry gantry("gantry");
 
@@ -97,6 +97,8 @@ void freq_println(float freq, const char* message)
   }
 }
 
+void loop_motorgo(void* pvParameters);
+
 void setup()
 {
   Serial.begin(115200);
@@ -111,48 +113,48 @@ void setup()
   //   Setup configurable callbacks
 
   // Setup motor parameters
-  motor_params_ch0.pole_pairs = 7;
-  motor_params_ch0.power_supply_voltage = 14.0;
-  motor_params_ch0.voltage_limit = 7.0;
+  motor_params_ch0.pole_pairs = 11;
+  motor_params_ch0.power_supply_voltage = 5.0;
+  motor_params_ch0.voltage_limit = 5.0;
   motor_params_ch0.current_limit = 320;
   motor_params_ch0.velocity_limit = 100.0;
   motor_params_ch0.calibration_voltage = 1.0;
 
-  motor_params_ch1.pole_pairs = 7;
-  motor_params_ch1.power_supply_voltage = 14.0;
-  motor_params_ch1.voltage_limit = 7.0;
+  motor_params_ch1.pole_pairs = 11;
+  motor_params_ch1.power_supply_voltage = 5.0;
+  motor_params_ch1.voltage_limit = 5.0;
   motor_params_ch1.current_limit = 320;
   motor_params_ch1.velocity_limit = 100.0;
   motor_params_ch1.calibration_voltage = 1.0;
 
   // Set PID parameters
-  position_pid_params_ch0.p = 0.0;
+  position_pid_params_ch0.p = 30.0;
   position_pid_params_ch0.i = 0.0;
   position_pid_params_ch0.d = 0.0;
   position_pid_params_ch0.output_ramp = 10000.0;
-  position_pid_params_ch0.lpf_time_constant = 0.16;
+  position_pid_params_ch0.lpf_time_constant = 0.05;
   position_pid_params_ch0.limit = 100.0;
 
-  velocity_pid_params_ch0.p = 0.0;
+  velocity_pid_params_ch0.p = 3.5;
   velocity_pid_params_ch0.i = 0.0;
   velocity_pid_params_ch0.d = 0.0;
   velocity_pid_params_ch0.output_ramp = 10000.0;
-  velocity_pid_params_ch0.lpf_time_constant = 0.08;
+  velocity_pid_params_ch0.lpf_time_constant = 0.05;
   velocity_pid_params_ch0.limit = 100.0;
 
-  position_pid_params_ch1.p = 15.0;
+  position_pid_params_ch1.p = 30.0;
   position_pid_params_ch1.i = 0.0;
   position_pid_params_ch1.d = 0.0;
   position_pid_params_ch1.output_ramp = 10000.0;
-  position_pid_params_ch1.lpf_time_constant = 0.16;
+  position_pid_params_ch1.lpf_time_constant = 0.05;
   position_pid_params_ch1.limit = 100.0;
 
-  velocity_pid_params_ch1.p = 16.0;
-  velocity_pid_params_ch1.i = 3.8;
-  velocity_pid_params_ch1.d = 0.00;
+  velocity_pid_params_ch1.p = 3.0;
+  velocity_pid_params_ch1.i = 0.0;
+  velocity_pid_params_ch1.d = 0.008;
   velocity_pid_params_ch1.output_ramp = 10000.0;
   velocity_pid_params_ch1.limit = 100.0;
-  velocity_pid_params_ch1.lpf_time_constant = 0.2;
+  velocity_pid_params_ch1.lpf_time_constant = 0.05;
 
   // Setup motor parameters
   //   motor_params_ch0.pole_pairs = 11;
@@ -242,6 +244,29 @@ void setup()
   Serial.println("mDNS responder started");
   MDNS.addService("http", "tcp", 8080);
   MDNS.addServiceTxt("http", "tcp", "gantry", "sentry0");
+
+  xTaskCreatePinnedToCore(
+      loop_motorgo,       /* Task function. */
+      "Loop MotorGo",     /* name of task. */
+      10000,              /* Stack size of task */
+      NULL,               /* parameter of the task */
+      1,                  /* priority of the task */
+      &loop_motorgo_task, /* Task handle to keep track of created task */
+      1);                 /* pin task to core 1 */
+}
+
+void loop_motorgo(void* pvParameters)
+{
+  Serial.print("Loop FOC running on core ");
+  Serial.println(xPortGetCoreID());
+
+  for (;;)
+  {
+    gantry.loop();
+
+    //   Print loop frequency
+    esp_task_wdt_reset();
+  }
 }
 
 int i = 0;
@@ -250,35 +275,7 @@ unsigned long last_loop_time = 0;
 float vel = 30;
 void loop()
 {
-  gantry.loop();
-
-  //   // print velocity for both channels
-  //   char str_buffer[100];
-  //   sprintf(str_buffer, "Ch0: %f, Ch1: %f\n",
-  //   motorgo_mini->get_ch0_velocity(),
-  //           motorgo_mini->get_ch1_velocity());
-
-  //   freq_print(50, str_buffer);
-
-  // Delay necessary amount micros
-  //   unsigned longow - last_loop_time;
-  //   freq_print loop timefer[100];
-  //   sprintf(str_buffer, "Loop time: %lu\n", loop_time);
-  //   freq_print(10, str_buffer);
-
-  //   if (loop_time < LOOP_US)
-  //   {
-  //     delayMicroseconds(LOOP_US - loop_time);
-  //   }
-  //   else
-  //   {
-  //     Serial.print("Loop time exceeded ");
-  //     // Print i
-  //     Serial.println(i);
-  //     i++;
-  //   }
-
-  //   last_loop_time = now;
+  // Do nothing
 }
 
 void on_pid_update(const float& updated_value)
